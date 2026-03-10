@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "server": "node dist/server.js",
     "dev": "ts-node src/index.ts",
-    "dev:server": "ts-node src/server.ts"
+    "dev:server": "ts-node src/server.ts",
+    "prepare": "tsc"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -23,5 +24,13 @@
   },
   "bin": {
     "mcp-bitbake": "dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pkt-lab/mcp-bitbake"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   }
 }
