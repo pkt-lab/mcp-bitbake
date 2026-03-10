@@ -33,8 +33,12 @@ const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)\s*(:=|\?=|\+=|\.=|=)\s*["'](.*?
 // Same but for multiline start (value ends with \)
 const ASSIGNMENT_ML_START_RE = /^([A-Za-z_][A-Za-z0-9_]*)\s*(:=|\?=|\+=|\.=|=)\s*["'](.*\\)\s*$/;
 
-// Variable name with override syntax (VAR:something or VAR:${VAR} etc.)
-const VAR_WITH_OVERRIDE_RE = /^([A-Za-z_][A-Za-z0-9_]*):[A-Za-z$_][\w${}-]*\s*(:=|\?=|\+=|\.=|=)/;
+// Variable name with override syntax: VAR:append, VAR:append:machine, etc.
+// Handles multiple colon-separated override components
+const VAR_WITH_OVERRIDE_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?::[A-Za-z_$][\w${}-]*)+\s*(:=|\?=|\+=|\.=|=)/;
+
+// Variable flag syntax: VAR[flag] = ... (unsupported in v1, emit warning)
+const VAR_FLAG_RE = /^([A-Za-z_][A-Za-z0-9_]*)\[[\w.]+\]\s*(:=|\?=|\+=|\.=|=)/;
 
 export function parseRecipeFile(filePath: string): ParseResult | ErrorResult {
   // Validate path
@@ -159,6 +163,16 @@ export function parseRecipeFile(filePath: string): ParseResult | ErrorResult {
         raw_value: match[3],
         line: i + 1,
       });
+      i++;
+      continue;
+    }
+
+    // Check for variable flag syntax VAR[flag] = ... (unsupported in v1)
+    const flagMatch = VAR_FLAG_RE.exec(trimmed);
+    if (flagMatch) {
+      warnings.push(
+        `Line ${i + 1}: variable flag syntax not parsed: ${trimmed.substring(0, 80)}`
+      );
       i++;
       continue;
     }
