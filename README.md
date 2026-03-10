@@ -1,10 +1,17 @@
 # mcp-bitbake
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for BitBake/Yocto. Lets AI coding assistants parse recipes, scan layers, and navigate Yocto project structure without hallucinating variable names or syntax.
+A deterministic [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for BitBake/Yocto. Inspects recipe metadata without evaluating variables — returns only raw assignments as found in files.
+
+**Design rules:**
+- Never evaluates variables — only returns raw assignments
+- Only supports `.bb` and `.bbappend` files
+- Supported operators: `=`, `:=`, `?=`, `+=`, `.=`
+- Returns structured JSON for all responses
+- Fails closed on unsupported syntax (override syntax warned, not parsed)
 
 ## Install
 
-**From GitHub (no npm needed):**
+**From GitHub (no npm publish needed):**
 
 ```bash
 npm install github:pkt-lab/mcp-bitbake
@@ -55,41 +62,59 @@ Restart Claude Desktop after editing.
 
 ## MCP tools
 
-### `parse_recipe`
+### `find_recipe_files`
 
-Parse a single `.bb` or `.bbappend` recipe file:
+Search recursively for `.bb`/`.bbappend` files matching a filename pattern:
 
 ```json
-{ "file_path": "/path/to/meta-layer/recipes-core/myapp/myapp_1.0.bb" }
+{ "root_path": "/path/to/poky", "query": "busybox" }
 ```
 
-Returns recipe name, version, license, SRC_URI, dependencies, and all variables.
+Returns: `{ ok: true, matches: [{ path, file_type, filename }] }`
 
-### `scan_layer`
+### `scan_layer_recipe_files`
 
-Scan an entire Yocto layer directory for all recipes:
+List all `.bb`/`.bbappend` files under a layer path:
 
 ```json
 { "layer_path": "/path/to/meta-mylayer" }
 ```
 
-Returns a list of all recipes with their metadata summary.
+Returns: `{ ok: true, files: [{ path, file_type }] }`
 
-### `find_recipe`
+### `parse_recipe_file`
 
-Search for a recipe by name across a Yocto build directory:
+Parse a single `.bb` or `.bbappend` file and return all raw variable assignments:
 
 ```json
-{ "build_dir": "/path/to/poky/build", "recipe_name": "busybox" }
+{ "file_path": "/path/to/meta-layer/recipes-core/myapp/myapp_1.0.bb" }
 ```
 
-### `get_variable`
+Returns: `{ ok: true, variables: [{ name, operator, raw_value, line }], warnings?: [...] }`
 
-Extract the value of a specific BitBake variable from a recipe:
+- Comments and python/shell function blocks are skipped
+- Override syntax (`VAR:append`, `VAR:${PN}`, etc.) is warned but not parsed
+- Multi-line values (lines ending with `\`) are concatenated into `raw_value`
+
+### `get_recipe_var_raw`
+
+Get all assignments for a specific variable in a file:
 
 ```json
 { "file_path": "/path/to/recipe.bb", "variable": "SRC_URI" }
 ```
+
+Returns: `{ ok: true, assignments: [{ operator, raw_value, line }] }`
+
+## Error format
+
+All errors return:
+
+```json
+{ "ok": false, "error_code": "...", "message": "..." }
+```
+
+Error codes: `FILE_NOT_FOUND`, `INVALID_PATH`, `UNSUPPORTED_SYNTAX`, `INVALID_ARGUMENT`
 
 ## License
 

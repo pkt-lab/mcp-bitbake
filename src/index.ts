@@ -1,63 +1,89 @@
 #!/usr/bin/env node
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import { parseRecipeFile, scanLayerForRecipes } from './parser/recipe.js';
+} from "@modelcontextprotocol/sdk/types.js";
+import {
+  parseRecipeFile,
+  getRecipeVarRaw,
+  scanLayerRecipeFiles,
+  findRecipeFiles,
+} from "./parser/index.js";
 
 const server = new Server(
-  { name: 'mcp-bitbake', version: '0.1.0' },
+  { name: "mcp-bitbake", version: "1.0.0" },
   { capabilities: { tools: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
-      name: 'parse_recipe',
-      description: 'Parse a single BitBake .bb or .bbappend recipe file and return its metadata.',
+      name: "find_recipe_files",
+      description:
+        "Search recursively for .bb/.bbappend files matching a filename query under root_path.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          file_path: { type: 'string', description: 'Absolute path to the .bb or .bbappend file' },
+          root_path: {
+            type: "string",
+            description: "Directory to search recursively",
+          },
+          query: {
+            type: "string",
+            description: "Substring to match against filenames",
+          },
         },
-        required: ['file_path'],
+        required: ["root_path", "query"],
       },
     },
     {
-      name: 'scan_layer',
-      description: 'Scan a Yocto layer directory for all recipes and return metadata for each.',
+      name: "scan_layer_recipe_files",
+      description: "List all .bb/.bbappend files under a Yocto layer path.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          layer_path: { type: 'string', description: 'Path to the Yocto layer directory' },
+          layer_path: {
+            type: "string",
+            description: "Root directory of the Yocto layer",
+          },
         },
-        required: ['layer_path'],
+        required: ["layer_path"],
       },
     },
     {
-      name: 'find_recipe',
-      description: 'Search recipes in a layer by name substring. Returns up to 10 matches.',
+      name: "parse_recipe_file",
+      description:
+        "Parse a single .bb or .bbappend file and return all raw variable assignments. Never evaluates variables.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          layer_path: { type: 'string', description: 'Path to the Yocto layer directory' },
-          query: { type: 'string', description: 'Substring to search for in recipe names' },
+          file_path: {
+            type: "string",
+            description: "Absolute or relative path to the .bb or .bbappend file",
+          },
         },
-        required: ['layer_path', 'query'],
+        required: ["file_path"],
       },
     },
     {
-      name: 'get_recipe_deps',
-      description: 'Get DEPENDS and RDEPENDS for a named recipe in a layer.',
+      name: "get_recipe_var_raw",
+      description:
+        "Get all raw assignments for a specific variable in a .bb or .bbappend file.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          layer_path: { type: 'string', description: 'Path to the Yocto layer directory' },
-          recipe_name: { type: 'string', description: 'Recipe name (PN) to look up' },
+          file_path: {
+            type: "string",
+            description: "Path to the .bb or .bbappend file",
+          },
+          variable: {
+            type: "string",
+            description: "Variable name to look up (e.g. SRC_URI, PN, PV)",
+          },
         },
-        required: ['layer_path', 'recipe_name'],
+        required: ["file_path", "variable"],
       },
     },
   ],
@@ -66,74 +92,58 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  if (name === 'parse_recipe') {
-    const filePath = args?.file_path as string;
-    const metadata = parseRecipeFile(filePath);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(metadata, null, 2) }],
-    };
-  }
+  try {
+    switch (name) {
+      case "find_recipe_files": {
+        const { root_path, query } = args as { root_path: string; query: string };
+        if (typeof root_path !== "string" || typeof query !== "string") {
+          return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "root_path and query must be strings" });
+        }
+        return result(findRecipeFiles(root_path, query));
+      }
 
-  if (name === 'scan_layer') {
-    const layerPath = args?.layer_path as string;
-    const recipes = scanLayerForRecipes(layerPath);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ count: recipes.length, recipes }, null, 2),
-        },
-      ],
-    };
-  }
+      case "scan_layer_recipe_files": {
+        const { layer_path } = args as { layer_path: string };
+        if (typeof layer_path !== "string") {
+          return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "layer_path must be a string" });
+        }
+        return result(scanLayerRecipeFiles(layer_path));
+      }
 
-  if (name === 'find_recipe') {
-    const layerPath = args?.layer_path as string;
-    const query = (args?.query as string).toLowerCase();
-    const recipes = scanLayerForRecipes(layerPath);
-    const matches = recipes
-      .filter((r) => r.name.toLowerCase().includes(query))
-      .slice(0, 10);
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ count: matches.length, matches }, null, 2),
-        },
-      ],
-    };
-  }
+      case "parse_recipe_file": {
+        const { file_path } = args as { file_path: string };
+        if (typeof file_path !== "string") {
+          return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path must be a string" });
+        }
+        return result(parseRecipeFile(file_path));
+      }
 
-  if (name === 'get_recipe_deps') {
-    const layerPath = args?.layer_path as string;
-    const recipeName = (args?.recipe_name as string).toLowerCase();
-    const recipes = scanLayerForRecipes(layerPath);
-    const recipe = recipes.find((r) => r.name.toLowerCase() === recipeName);
-    if (!recipe) {
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ error: `Recipe '${args?.recipe_name}' not found` }) }],
-        isError: true,
-      };
+      case "get_recipe_var_raw": {
+        const { file_path, variable } = args as { file_path: string; variable: string };
+        if (typeof file_path !== "string" || typeof variable !== "string") {
+          return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path and variable must be strings" });
+        }
+        return result(getRecipeVarRaw(file_path, variable));
+      }
+
+      default:
+        return result({
+          ok: false,
+          error_code: "UNSUPPORTED_SYNTAX",
+          message: `Unknown tool: ${name}`,
+        });
     }
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            { name: recipe.name, version: recipe.version, depends: recipe.depends, rdepends: recipe.rdepends },
-            null,
-            2
-          ),
-        },
-      ],
-    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return result({ ok: false, error_code: "UNSUPPORTED_SYNTAX", message });
   }
-
-  return {
-    content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }],
-    isError: true,
-  };
 });
+
+function result(data: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+  };
+}
 
 async function main() {
   const transport = new StdioServerTransport();
