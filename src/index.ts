@@ -11,6 +11,7 @@ import {
   scanLayerRecipeFiles,
   findRecipeFiles,
 } from "./parser/index.js";
+import { validateDirPath, validateFilePath } from "./validation.js";
 
 const server = new Server(
   { name: "mcp-bitbake", version: "1.0.0" },
@@ -99,6 +100,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof root_path !== "string" || typeof query !== "string") {
           return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "root_path and query must be strings" });
         }
+        const v1 = validateDirPath(root_path);
+        if (!v1.ok) return result(v1);
         return result(findRecipeFiles(root_path, query));
       }
 
@@ -107,6 +110,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof layer_path !== "string") {
           return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "layer_path must be a string" });
         }
+        const v2 = validateDirPath(layer_path);
+        if (!v2.ok) return result(v2);
         return result(scanLayerRecipeFiles(layer_path));
       }
 
@@ -115,6 +120,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof file_path !== "string") {
           return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path must be a string" });
         }
+        const v3 = validateFilePath(file_path);
+        if (!v3.ok) return result(v3);
         return result(parseRecipeFile(file_path));
       }
 
@@ -123,6 +130,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof file_path !== "string" || typeof variable !== "string") {
           return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path and variable must be strings" });
         }
+        const v4 = validateFilePath(file_path);
+        if (!v4.ok) return result(v4);
         return result(getRecipeVarRaw(file_path, variable));
       }
 

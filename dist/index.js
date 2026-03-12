@@ -5,6 +5,7 @@ const index_js_1 = require("@modelcontextprotocol/sdk/server/index.js");
 const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
 const types_js_1 = require("@modelcontextprotocol/sdk/types.js");
 const index_js_2 = require("./parser/index.js");
+const validation_js_1 = require("./validation.js");
 const server = new index_js_1.Server({ name: "mcp-bitbake", version: "1.0.0" }, { capabilities: { tools: {} } });
 server.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
     tools: [
@@ -83,6 +84,9 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 if (typeof root_path !== "string" || typeof query !== "string") {
                     return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "root_path and query must be strings" });
                 }
+                const v1 = (0, validation_js_1.validateDirPath)(root_path);
+                if (!v1.ok)
+                    return result(v1);
                 return result((0, index_js_2.findRecipeFiles)(root_path, query));
             }
             case "scan_layer_recipe_files": {
@@ -90,6 +94,9 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 if (typeof layer_path !== "string") {
                     return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "layer_path must be a string" });
                 }
+                const v2 = (0, validation_js_1.validateDirPath)(layer_path);
+                if (!v2.ok)
+                    return result(v2);
                 return result((0, index_js_2.scanLayerRecipeFiles)(layer_path));
             }
             case "parse_recipe_file": {
@@ -97,6 +104,9 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 if (typeof file_path !== "string") {
                     return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path must be a string" });
                 }
+                const v3 = (0, validation_js_1.validateFilePath)(file_path);
+                if (!v3.ok)
+                    return result(v3);
                 return result((0, index_js_2.parseRecipeFile)(file_path));
             }
             case "get_recipe_var_raw": {
@@ -104,6 +114,9 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 if (typeof file_path !== "string" || typeof variable !== "string") {
                     return result({ ok: false, error_code: "INVALID_ARGUMENT", message: "file_path and variable must be strings" });
                 }
+                const v4 = (0, validation_js_1.validateFilePath)(file_path);
+                if (!v4.ok)
+                    return result(v4);
                 return result((0, index_js_2.getRecipeVarRaw)(file_path, variable));
             }
             default:
